@@ -77,17 +77,26 @@ async function findVariantBySku(sku) {
 }
 
 async function findOrCreateVariantBySku(sku, productName, price, vatRate) {
+  if (!sku || !sku.trim()) {
+    console.log('findOrCreateVariantBySku: Empty SKU provided');
+    return null;
+  }
+  
   // First, try to find existing variant by SKU
   const variant = await findVariantBySku(sku);
-  if (variant) return variant;
+  if (variant && variant.id) {
+    console.log(`Found existing variant: SKU=${sku}, ID=${variant.id}`);
+    return variant;
+  }
   
   // Not found - create product WITH variant in one call (Katana requires this)
+  console.log(`Creating new product for SKU=${sku}, name=${productName}`);
   const productData = {
-    name: productName,
+    name: productName || `Product ${sku}`,
     variants: [{
-      sku: sku,
-      sales_price: price,
-      purchase_price: price * 0.5 // Estimate purchase price at 50%
+      sku: sku.trim(),
+      sales_price: Math.max(0, price || 0),
+      purchase_price: Math.max(0, (price || 0) * 0.5)
     }]
   };
   
@@ -98,11 +107,19 @@ async function findOrCreateVariantBySku(sku, productName, price, vatRate) {
   }
   
   // Return the created variant from the response
-  const createdProduct = result.data?.data || result.data;
+  // Katana returns the product directly (not wrapped in data.data)
+  const createdProduct = result.data;
+  console.log('Product creation response:', JSON.stringify(createdProduct).substring(0, 200));
+  
   if (createdProduct?.variants && createdProduct.variants.length > 0) {
-    return createdProduct.variants[0];
+    const createdVariant = createdProduct.variants[0];
+    if (createdVariant && createdVariant.id) {
+      console.log(`Created variant: SKU=${sku}, ID=${createdVariant.id}`);
+      return createdVariant;
+    }
   }
   
+  console.log(`Failed to get variant from created product for SKU=${sku}`);
   return null;
 }
 
@@ -346,9 +363,11 @@ exports.handler = async (event, context) => {
         customItems.push({ row: orderRows.length, name, quantity, price: finalPrice, discount: discountPercent });
       } else {
         const variant = await findOrCreateVariantBySku(sku, name, originalPrice, vatRate);
-        if (variant) {
+        if (variant && variant.id && typeof variant.id === 'number') {
+          console.log(`Using variant ID ${variant.id} for SKU ${sku}`);
           orderRows.push({ ...baseRow, variant_id: variant.id });
         } else {
+          console.log(`Falling back to CUSTOM-ITEM for SKU ${sku} (variant result: ${JSON.stringify(variant)})`);
           orderRows.push({ ...baseRow, variant_id: CUSTOM_ITEM_VARIANT_ID });
           customItems.push({ row: orderRows.length, name, sku, quantity, price: finalPrice, discount: discountPercent });
         }
