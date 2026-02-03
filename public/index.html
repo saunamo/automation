@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Saunamo Automation API</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; }
+    h1 { color: #333; }
+    .endpoint { background: #f5f5f5; padding: 10px; border-radius: 5px; margin: 10px 0; }
+    code { background: #e0e0e0; padding: 2px 6px; border-radius: 3px; }
+  </style>
+</head>
+<body>
+  <h1>Saunamo Automation API</h1>
+  <p>Pipedrive to Katana order synchronization service.</p>
+  
+  <h2>Endpoints</h2>
+  <div class="endpoint">
+    <strong>Health Check:</strong><br>
+    <code>GET /health</code> or <code>GET /.netlify/functions/health</code>
+  </div>
+  <div class="endpoint">
+    <strong>Sync Order:</strong><br>
+    <code>POST /api/sync-order</code> or <code>POST /.netlify/functions/sync_order</code>
+  </div>
+  
+  <h2>Status</h2>
+  <p>✅ Service is running</p>
+</body>
+</html>
