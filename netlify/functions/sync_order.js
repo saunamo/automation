@@ -332,17 +332,14 @@ exports.handler = async (event, context) => {
       finalPrice = Math.max(0, finalPrice);
       
       // Build base row data with discounted price
+      // Note: We apply discount directly to price_per_unit, NOT using total_discount
+      // because Katana's total_discount doesn't affect the row total calculation
       const baseRow = {
         quantity,
         price_per_unit: finalPrice,
         tax_rate_id: getTaxRateId(vatRate),
         location_id: DEFAULT_LOCATION_ID
       };
-      
-      // Also store discount for display purposes (optional)
-      if (discountPercent > 0) {
-        baseRow.total_discount = discountPercent;
-      }
       
       if (!sku) {
         orderRows.push({ ...baseRow, variant_id: CUSTOM_ITEM_VARIANT_ID });
