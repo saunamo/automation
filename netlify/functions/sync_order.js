@@ -215,17 +215,27 @@ exports.handler = async (event, context) => {
         // Pipedrive calculates: item_price = (base_price * (1 - discount_percentage/100))
         const finalPrice = parseFloat(dp.item_price || 0);
         
-        // Discount: Pipedrive stores discount amount in 'discount' field
-        // discount_type can be 'percentage' or 'amount' but the value is always the amount
-        const discountAmount = parseFloat(dp.discount || 0);
+        // Discount: Pipedrive's discount field varies:
+        // - Sometimes it's a percentage (e.g., 10 = 10%)
+        // - Sometimes it's scaled (e.g., 500 might mean 5%)
+        // - We need to interpret and cap it reasonably
+        let discountPercent = parseFloat(dp.discount || 0);
+        
+        // If discount > 100, assume it's scaled by 100 (e.g., 500 = 5%)
+        if (discountPercent > 100) {
+          discountPercent = discountPercent / 100;
+        }
+        
+        // Cap discount at 99% max (can't have 100% or more)
+        discountPercent = Math.min(discountPercent, 99);
         
         products.push({
           name: dp.name || productDetails.name || 'Unknown',
           sku,
           quantity: parseInt(dp.quantity || 0),
-          price_per_unit: finalPrice, // This is the price AFTER discount in Pipedrive
+          price_per_unit: finalPrice,
           vat_rate: parseInt(vatRate),
-          discount_amount: discountAmount, // Absolute discount amount from Pipedrive
+          discount_percent: discountPercent, // Percentage discount for Katana
           currency: data.currency || 'EUR'
         });
       }
@@ -270,7 +280,7 @@ exports.handler = async (event, context) => {
       const quantity = parseInt(product.quantity || 0);
       const price = parseFloat(product.price_per_unit || 0);
       const vatRate = product.vat_rate || 23;
-      const discountAmount = parseFloat(product.discount_amount || 0);
+      const discountPercent = parseFloat(product.discount_percent || 0);
       
       if (quantity === 0) continue;
       
@@ -282,21 +292,21 @@ exports.handler = async (event, context) => {
         location_id: DEFAULT_LOCATION_ID
       };
       
-      // Add discount if present (Katana accepts total_discount as currency amount)
-      if (discountAmount > 0) {
-        baseRow.total_discount = discountAmount;
+      // Add discount percentage if present (Katana's total_discount field is percentage-based)
+      if (discountPercent > 0) {
+        baseRow.total_discount = discountPercent;
       }
       
       if (!sku) {
         orderRows.push({ ...baseRow, variant_id: CUSTOM_ITEM_VARIANT_ID });
-        customItems.push({ row: orderRows.length, name, quantity, price, discount: discountAmount });
+        customItems.push({ row: orderRows.length, name, quantity, price, discount: discountPercent });
       } else {
         const variant = await findOrCreateVariantBySku(sku, name, price, vatRate);
         if (variant) {
           orderRows.push({ ...baseRow, variant_id: variant.id });
         } else {
           orderRows.push({ ...baseRow, variant_id: CUSTOM_ITEM_VARIANT_ID });
-          customItems.push({ row: orderRows.length, name, sku, quantity, price, discount: discountAmount });
+          customItems.push({ row: orderRows.length, name, sku, quantity, price, discount: discountPercent });
         }
       }
     }
