@@ -2,13 +2,7 @@
   functions = "netlify/functions"
 
 [functions]
-  node_bundler = "esbuild"
-  
-[functions."health"]
-  runtime = "python3.9"
-
-[functions."sync_order"]
-  runtime = "python3.9"
+  included_files = ["**"]
 
 [[redirects]]
   from = "/api/sync-order"
