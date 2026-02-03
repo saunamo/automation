@@ -316,21 +316,30 @@ exports.handler = async (event, context) => {
       const sku = (product.sku || '').trim().toUpperCase();
       const name = product.name;
       const quantity = parseInt(product.quantity || 0);
-      const price = parseFloat(product.price_per_unit || 0);
+      const originalPrice = parseFloat(product.price_per_unit || 0);
       const vatRate = product.vat_rate || 23;
       const discountPercent = parseFloat(product.discount_percent || 0);
       
       if (quantity === 0) continue;
       
-      // Build base row data
+      // Calculate discounted price - Katana's total_discount doesn't affect row totals
+      // So we apply the discount to the price_per_unit directly
+      let finalPrice = originalPrice;
+      if (discountPercent > 0 && discountPercent < 100) {
+        finalPrice = originalPrice * (1 - discountPercent / 100);
+      }
+      // Ensure price is never negative
+      finalPrice = Math.max(0, finalPrice);
+      
+      // Build base row data with discounted price
       const baseRow = {
         quantity,
-        price_per_unit: Math.max(0, price),
+        price_per_unit: finalPrice,
         tax_rate_id: getTaxRateId(vatRate),
         location_id: DEFAULT_LOCATION_ID
       };
       
-      // Add discount percentage if present (Katana's total_discount field is percentage-based)
+      // Also store discount for display purposes (optional)
       if (discountPercent > 0) {
         baseRow.total_discount = discountPercent;
       }
