@@ -378,6 +378,19 @@ exports.handler = async (event, context) => {
       return { statusCode: 400, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ success: false, error: 'No products to add' }) };
     }
     
+    // Log order rows for debugging
+    console.log(`Order rows to create: ${JSON.stringify(orderRows.map(r => ({ variant_id: r.variant_id, qty: r.quantity, price: r.price_per_unit })))}`);
+    
+    // Validate all order rows have valid variant_ids
+    for (let i = 0; i < orderRows.length; i++) {
+      const row = orderRows[i];
+      if (!row.variant_id || typeof row.variant_id !== 'number') {
+        console.log(`Invalid variant_id at row ${i}: ${JSON.stringify(row)}`);
+        return { statusCode: 400, headers: { 'Content-Type': 'application/json' }, 
+          body: JSON.stringify({ success: false, error: `Invalid variant_id at row ${i}: ${row.variant_id}` }) };
+      }
+    }
+    
     // Build order data
     const orderData = {
       order_no: orderNo,
