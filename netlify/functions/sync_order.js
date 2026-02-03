@@ -242,7 +242,19 @@ exports.handler = async (event, context) => {
       for (const dp of dealProducts) {
         if (!dp.product_id) continue;
         const productDetails = (await pipedriveRequest(`products/${dp.product_id}`)).data || {};
-        const sku = (productDetails[SKU_FIELD_KEY] || productDetails.code || '').trim();
+        
+        // Get SKU: First try the dedicated SKU field, then extract from product name (after "|")
+        // Don't use 'code' field as fallback - it's used for country/region codes like "FR"
+        let sku = (productDetails[SKU_FIELD_KEY] || '').trim();
+        
+        // If no SKU in dedicated field, try to extract from product name (format: "Product Name | SKU")
+        if (!sku) {
+          const productName = dp.name || productDetails.name || '';
+          const pipeIndex = productName.lastIndexOf('|');
+          if (pipeIndex > 0) {
+            sku = productName.substring(pipeIndex + 1).trim();
+          }
+        }
         
         // VAT: Use deal product line item VAT if available, otherwise product VAT, default 23%
         // Handle 0% VAT explicitly (can't use || because 0 is falsy)
