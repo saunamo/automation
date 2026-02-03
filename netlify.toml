@@ -1,8 +1,11 @@
 [build]
   functions = "netlify/functions"
 
-[functions]
-  included_files = ["**"]
+[functions."health"]
+  runtime = "python3.9"
+
+[functions."sync_order"]
+  runtime = "python3.9"
 
 [[redirects]]
   from = "/api/sync-order"
