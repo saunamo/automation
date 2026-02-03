@@ -100,12 +100,34 @@ function getTaxRateId(vatRate, currency = 'EUR') {
 }
 
 function formatKatanaDate(wonTime) {
-  const dt = new Date(wonTime);
+  // Pipedrive won_time can be in format: "2024-01-15 10:30:00" or ISO format
+  // Ensure we always get the exact time from Pipedrive
+  let dt;
+  if (typeof wonTime === 'string' && wonTime.includes('T')) {
+    // ISO format: "2024-01-15T10:30:00Z" or "2024-01-15T10:30:00+00:00"
+    dt = new Date(wonTime);
+  } else if (typeof wonTime === 'string' && wonTime.includes(' ')) {
+    // Pipedrive format: "2024-01-15 10:30:00"
+    dt = new Date(wonTime.replace(' ', 'T') + 'Z');
+  } else {
+    dt = new Date(wonTime);
+  }
+  
+  // Return in Katana format: "2024-01-15T10:30:00.000Z"
   return dt.toISOString().replace(/\.\d{3}Z$/, '.000Z');
 }
 
 function calculateDeliveryDate(wonTime, days = 14) {
-  const dt = new Date(wonTime);
+  // Use same parsing as formatKatanaDate
+  let dt;
+  if (typeof wonTime === 'string' && wonTime.includes('T')) {
+    dt = new Date(wonTime);
+  } else if (typeof wonTime === 'string' && wonTime.includes(' ')) {
+    dt = new Date(wonTime.replace(' ', 'T') + 'Z');
+  } else {
+    dt = new Date(wonTime);
+  }
+  
   dt.setDate(dt.getDate() + days);
   return dt.toISOString().replace(/\.\d{3}Z$/, '.000Z');
 }
@@ -157,13 +179,25 @@ exports.handler = async (event, context) => {
         if (!dp.product_id) continue;
         const productDetails = (await pipedriveRequest(`products/${dp.product_id}`)).data || {};
         const sku = (productDetails[SKU_FIELD_KEY] || productDetails.code || '').trim();
-        const vatRate = productDetails.tax || productDetails.vat || 23;
+        
+        // VAT: Use deal product line item VAT if available, otherwise product VAT, default 23%
+        // Pipedrive deal products can have different VAT than the base product
+        const vatRate = dp.tax || dp.vat || productDetails.tax || productDetails.vat || 23;
+        
+        // Price: item_price is already the final price per unit AFTER discount
+        // Pipedrive calculates: item_price = (base_price * (1 - discount_percentage/100))
+        const finalPrice = parseFloat(dp.item_price || 0);
+        
+        // Track discount for reference (if available)
+        const discountPercentage = parseFloat(dp.discount_percentage || dp.discount || 0);
+        
         products.push({
           name: dp.name || productDetails.name || 'Unknown',
           sku,
           quantity: parseInt(dp.quantity || 0),
-          price_per_unit: parseFloat(dp.item_price || 0),
+          price_per_unit: finalPrice, // Already includes discount
           vat_rate: parseInt(vatRate),
+          discount_percentage: discountPercentage,
           currency: data.currency || 'EUR'
         });
       }
