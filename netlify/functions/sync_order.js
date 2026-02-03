@@ -289,8 +289,8 @@ exports.handler = async (event, context) => {
           totalDiscountPercent = lineDiscountPercent + (dealLevelDiscountPercent * (1 - lineDiscountPercent / 100));
         }
         
-        // Cap total discount at 99% max (can't have 100% or more in Katana)
-        totalDiscountPercent = Math.min(Math.round(totalDiscountPercent * 100) / 100, 99);
+        // Cap total discount at 100% max (allow 100% for free items)
+        totalDiscountPercent = Math.min(Math.round(totalDiscountPercent * 100) / 100, 100);
         
         products.push({
           name: dp.name || productDetails.name || 'Unknown',
@@ -349,8 +349,13 @@ exports.handler = async (event, context) => {
       // Calculate discounted price - Katana's total_discount doesn't affect row totals
       // So we apply the discount to the price_per_unit directly
       let finalPrice = originalPrice;
-      if (discountPercent > 0 && discountPercent < 100) {
-        finalPrice = originalPrice * (1 - discountPercent / 100);
+      if (discountPercent > 0) {
+        if (discountPercent >= 100) {
+          // 100% discount = free item
+          finalPrice = 0;
+        } else {
+          finalPrice = originalPrice * (1 - discountPercent / 100);
+        }
       }
       // Ensure price is never negative
       finalPrice = Math.max(0, finalPrice);
