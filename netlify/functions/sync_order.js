@@ -346,14 +346,14 @@ exports.handler = async (event, context) => {
       
       if (!sku) {
         orderRows.push({ ...baseRow, variant_id: CUSTOM_ITEM_VARIANT_ID });
-        customItems.push({ row: orderRows.length, name, quantity, price, discount: discountPercent });
+        customItems.push({ row: orderRows.length, name, quantity, price: finalPrice, discount: discountPercent });
       } else {
-        const variant = await findOrCreateVariantBySku(sku, name, price, vatRate);
+        const variant = await findOrCreateVariantBySku(sku, name, originalPrice, vatRate);
         if (variant) {
           orderRows.push({ ...baseRow, variant_id: variant.id });
         } else {
           orderRows.push({ ...baseRow, variant_id: CUSTOM_ITEM_VARIANT_ID });
-          customItems.push({ row: orderRows.length, name, sku, quantity, price, discount: discountPercent });
+          customItems.push({ row: orderRows.length, name, sku, quantity, price: finalPrice, discount: discountPercent });
         }
       }
     }
