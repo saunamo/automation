@@ -298,7 +298,6 @@ exports.handler = async (event, context) => {
       delivery_date: calculateDeliveryDate(data.won_time),
       currency: data.currency || 'EUR',
       location_id: DEFAULT_LOCATION_ID,
-      source: 'pipedrive',
       sales_order_rows: orderRows
     };
     
