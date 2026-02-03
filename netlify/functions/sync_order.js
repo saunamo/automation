@@ -196,9 +196,23 @@ exports.handler = async (event, context) => {
     if (!data.products) {
       const productsResult = await pipedriveRequest(`deals/${dealId}/products`);
       const dealProducts = productsResult.data || [];
+      const additionalData = productsResult.additional_data || {};
       
       if (!dealProducts.length) {
         return { statusCode: 400, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ success: false, error: 'No products in deal' }) };
+      }
+      
+      // Calculate deal-level discount from the difference between products sum and deal value
+      // Pipedrive's "Additional discounts" section is reflected in this difference
+      const productsSumTotal = parseFloat(additionalData.products_sum_total || 0);
+      const dealValue = parseFloat(dealData.value || 0);
+      let dealLevelDiscountPercent = 0;
+      
+      if (productsSumTotal > 0 && dealValue > 0 && dealValue < productsSumTotal) {
+        // Deal-level discount = (products_sum - deal_value) / products_sum * 100
+        dealLevelDiscountPercent = ((productsSumTotal - dealValue) / productsSumTotal) * 100;
+        // Round to 2 decimal places
+        dealLevelDiscountPercent = Math.round(dealLevelDiscountPercent * 100) / 100;
       }
       
       const products = [];
@@ -208,38 +222,60 @@ exports.handler = async (event, context) => {
         const sku = (productDetails[SKU_FIELD_KEY] || productDetails.code || '').trim();
         
         // VAT: Use deal product line item VAT if available, otherwise product VAT, default 23%
-        // Pipedrive deal products can have different VAT than the base product
         const vatRate = dp.tax || dp.vat || productDetails.tax || productDetails.vat || 23;
         
-        // Price: item_price is already the final price per unit AFTER discount
-        // Pipedrive calculates: item_price = (base_price * (1 - discount_percentage/100))
-        const finalPrice = parseFloat(dp.item_price || 0);
+        // Price: item_price is the price per unit
+        const itemPrice = parseFloat(dp.item_price || 0);
+        const quantity = parseInt(dp.quantity || 1);
+        const rowTotal = itemPrice * quantity;
         
-        // Discount: Pipedrive's discount field varies:
-        // - Sometimes it's a percentage (e.g., 10 = 10%)
-        // - Sometimes it's scaled (e.g., 500 might mean 5%)
-        // - We need to interpret and cap it reasonably
-        let discountPercent = parseFloat(dp.discount || 0);
+        // Line-level discount: Check discount_type to interpret correctly
+        // - "amount": discount is a currency value (e.g., £500)
+        // - "percentage": discount is a percentage value
+        const discountValue = parseFloat(dp.discount || 0);
+        const discountType = dp.discount_type || 'percentage';
         
-        // If discount > 100, assume it's scaled by 100 (e.g., 500 = 5%)
-        if (discountPercent > 100) {
-          discountPercent = discountPercent / 100;
+        let lineDiscountPercent = 0;
+        if (discountValue > 0) {
+          if (discountType === 'amount') {
+            // Convert currency amount to percentage
+            // Percentage = (discount_amount / row_total) * 100
+            if (rowTotal > 0) {
+              lineDiscountPercent = (discountValue / rowTotal) * 100;
+            }
+          } else {
+            // It's already a percentage
+            lineDiscountPercent = discountValue;
+          }
         }
         
-        // Cap discount at 99% max (can't have 100% or more)
-        discountPercent = Math.min(discountPercent, 99);
+        // Cap line discount at 100%
+        lineDiscountPercent = Math.min(lineDiscountPercent, 100);
+        
+        // Combine line-level and deal-level discounts
+        // Total discount = line_discount + deal_discount * (1 - line_discount/100)
+        // This compounds the discounts correctly
+        let totalDiscountPercent = lineDiscountPercent;
+        if (dealLevelDiscountPercent > 0 && lineDiscountPercent < 100) {
+          // Apply deal-level discount on the remaining value after line discount
+          totalDiscountPercent = lineDiscountPercent + (dealLevelDiscountPercent * (1 - lineDiscountPercent / 100));
+        }
+        
+        // Cap total discount at 99% max (can't have 100% or more in Katana)
+        totalDiscountPercent = Math.min(Math.round(totalDiscountPercent * 100) / 100, 99);
         
         products.push({
           name: dp.name || productDetails.name || 'Unknown',
           sku,
-          quantity: parseInt(dp.quantity || 0),
-          price_per_unit: finalPrice,
+          quantity: quantity,
+          price_per_unit: itemPrice,
           vat_rate: parseInt(vatRate),
-          discount_percent: discountPercent, // Percentage discount for Katana
+          discount_percent: totalDiscountPercent, // Combined line + deal discount
           currency: data.currency || 'EUR'
         });
       }
       data.products = products;
+      data.dealLevelDiscount = dealLevelDiscountPercent; // Store for reference
     }
     
     // Get won_time if not provided
