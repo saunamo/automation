@@ -215,16 +215,17 @@ exports.handler = async (event, context) => {
         // Pipedrive calculates: item_price = (base_price * (1 - discount_percentage/100))
         const finalPrice = parseFloat(dp.item_price || 0);
         
-        // Track discount for reference (if available)
-        const discountPercentage = parseFloat(dp.discount_percentage || dp.discount || 0);
+        // Discount: Pipedrive stores discount amount in 'discount' field
+        // discount_type can be 'percentage' or 'amount' but the value is always the amount
+        const discountAmount = parseFloat(dp.discount || 0);
         
         products.push({
           name: dp.name || productDetails.name || 'Unknown',
           sku,
           quantity: parseInt(dp.quantity || 0),
-          price_per_unit: finalPrice, // Already includes discount
+          price_per_unit: finalPrice, // This is the price AFTER discount in Pipedrive
           vat_rate: parseInt(vatRate),
-          discount_percentage: discountPercentage,
+          discount_amount: discountAmount, // Absolute discount amount from Pipedrive
           currency: data.currency || 'EUR'
         });
       }
@@ -269,20 +270,33 @@ exports.handler = async (event, context) => {
       const quantity = parseInt(product.quantity || 0);
       const price = parseFloat(product.price_per_unit || 0);
       const vatRate = product.vat_rate || 23;
-      const currency = product.currency || data.currency || 'EUR';
+      const discountAmount = parseFloat(product.discount_amount || 0);
       
       if (quantity === 0) continue;
       
+      // Build base row data
+      const baseRow = {
+        quantity,
+        price_per_unit: Math.max(0, price),
+        tax_rate_id: getTaxRateId(vatRate),
+        location_id: DEFAULT_LOCATION_ID
+      };
+      
+      // Add discount if present (Katana accepts total_discount as currency amount)
+      if (discountAmount > 0) {
+        baseRow.total_discount = discountAmount;
+      }
+      
       if (!sku) {
-        orderRows.push({ variant_id: CUSTOM_ITEM_VARIANT_ID, quantity, price_per_unit: Math.max(0, price), tax_rate_id: getTaxRateId(vatRate), location_id: DEFAULT_LOCATION_ID });
-        customItems.push({ row: orderRows.length, name, quantity, price });
+        orderRows.push({ ...baseRow, variant_id: CUSTOM_ITEM_VARIANT_ID });
+        customItems.push({ row: orderRows.length, name, quantity, price, discount: discountAmount });
       } else {
         const variant = await findOrCreateVariantBySku(sku, name, price, vatRate);
         if (variant) {
-          orderRows.push({ variant_id: variant.id, quantity, price_per_unit: price, tax_rate_id: getTaxRateId(vatRate), location_id: DEFAULT_LOCATION_ID });
+          orderRows.push({ ...baseRow, variant_id: variant.id });
         } else {
-          orderRows.push({ variant_id: CUSTOM_ITEM_VARIANT_ID, quantity, price_per_unit: Math.max(0, price), tax_rate_id: getTaxRateId(vatRate), location_id: DEFAULT_LOCATION_ID });
-          customItems.push({ row: orderRows.length, name, sku, quantity, price });
+          orderRows.push({ ...baseRow, variant_id: CUSTOM_ITEM_VARIANT_ID });
+          customItems.push({ row: orderRows.length, name, sku, quantity, price, discount: discountAmount });
         }
       }
     }
