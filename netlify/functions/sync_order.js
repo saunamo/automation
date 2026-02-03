@@ -5,9 +5,19 @@ const PIPEDRIVE_COMPANY_DOMAIN = process.env.PIPEDRIVE_COMPANY_DOMAIN || 'saunam
 const SKU_FIELD_KEY = '43a32efde94b5e07af24690d5b8db5dc18f5680a';
 
 const DEFAULT_LOCATION_ID = 166154;
-const DEFAULT_TAX_RATE_ID_EUR = 423653;
-const DEFAULT_TAX_RATE_ID_GBP = 459884;
 const CUSTOM_ITEM_VARIANT_ID = 38207669;
+
+// Katana Tax Rate IDs - mapped by VAT percentage
+const TAX_RATES = {
+  23: 423653,  // PT VAT (Portugal) - Default
+  22: 461343,  // Italy
+  21: 423654,  // ES IVA (Spain)
+  20: 459884,  // FR/UK (France/UK)
+  18: 456470,  // MT VAT (Malta)
+  6: 437610,   // Custom
+  0: 461342,   // Zero VAT
+};
+const DEFAULT_TAX_RATE_ID = 423653; // 23% PT VAT (default)
 
 async function katanaRequest(endpoint, method = 'GET', data = null) {
   const url = `${KATANA_BASE_URL}/${endpoint}`;
@@ -87,16 +97,31 @@ async function findOrCreateVariantBySku(sku, productName, price, vatRate) {
   const product = await findOrCreateProduct(productName, sku);
   if (!product) return null;
   
-  const taxRateId = vatRate >= 20 ? DEFAULT_TAX_RATE_ID_EUR : DEFAULT_TAX_RATE_ID_GBP;
+  const taxRateId = getTaxRateId(vatRate);
   const variantData = { product_id: product.id, sku, price, tax_rate_id: taxRateId };
   const result = await katanaRequest('variants', 'POST', variantData);
   if (result.error) return null;
   return result.data?.data || result.data;
 }
 
-function getTaxRateId(vatRate, currency = 'EUR') {
-  if (currency === 'GBP' || vatRate === 20) return DEFAULT_TAX_RATE_ID_GBP;
-  return DEFAULT_TAX_RATE_ID_EUR;
+function getTaxRateId(vatRate) {
+  // Look up exact VAT rate in our mapping
+  const rate = parseInt(vatRate) || 23;
+  
+  // Return exact match if available, otherwise find closest or default to 23%
+  if (TAX_RATES[rate]) {
+    return TAX_RATES[rate];
+  }
+  
+  // For rates not in our mapping, find the closest match
+  const rates = Object.keys(TAX_RATES).map(Number).sort((a, b) => b - a);
+  for (const r of rates) {
+    if (rate >= r) {
+      return TAX_RATES[r];
+    }
+  }
+  
+  return DEFAULT_TAX_RATE_ID; // 23% PT VAT
 }
 
 function formatKatanaDate(wonTime) {
@@ -247,14 +272,14 @@ exports.handler = async (event, context) => {
       if (quantity === 0) continue;
       
       if (!sku) {
-        orderRows.push({ variant_id: CUSTOM_ITEM_VARIANT_ID, quantity, price_per_unit: Math.max(0, price), tax_rate_id: getTaxRateId(vatRate, currency), location_id: DEFAULT_LOCATION_ID });
+        orderRows.push({ variant_id: CUSTOM_ITEM_VARIANT_ID, quantity, price_per_unit: Math.max(0, price), tax_rate_id: getTaxRateId(vatRate), location_id: DEFAULT_LOCATION_ID });
         customItems.push({ row: orderRows.length, name, quantity, price });
       } else {
         const variant = await findOrCreateVariantBySku(sku, name, price, vatRate);
         if (variant) {
-          orderRows.push({ variant_id: variant.id, quantity, price_per_unit: price, tax_rate_id: getTaxRateId(vatRate, currency), location_id: DEFAULT_LOCATION_ID });
+          orderRows.push({ variant_id: variant.id, quantity, price_per_unit: price, tax_rate_id: getTaxRateId(vatRate), location_id: DEFAULT_LOCATION_ID });
         } else {
-          orderRows.push({ variant_id: CUSTOM_ITEM_VARIANT_ID, quantity, price_per_unit: Math.max(0, price), tax_rate_id: getTaxRateId(vatRate, currency), location_id: DEFAULT_LOCATION_ID });
+          orderRows.push({ variant_id: CUSTOM_ITEM_VARIANT_ID, quantity, price_per_unit: Math.max(0, price), tax_rate_id: getTaxRateId(vatRate), location_id: DEFAULT_LOCATION_ID });
           customItems.push({ row: orderRows.length, name, sku, quantity, price });
         }
       }
