@@ -125,10 +125,12 @@ async function findOrCreateVariantBySku(sku, productName, price, vatRate) {
 
 function getTaxRateId(vatRate) {
   // Look up exact VAT rate in our mapping
-  const rate = parseInt(vatRate) || 23;
+  // Handle 0% VAT explicitly (0 is falsy in JS, so we need special handling)
+  const parsedRate = parseInt(vatRate);
+  const rate = isNaN(parsedRate) ? 23 : parsedRate;
   
-  // Return exact match if available, otherwise find closest or default to 23%
-  if (TAX_RATES[rate]) {
+  // Return exact match if available
+  if (TAX_RATES[rate] !== undefined) {
     return TAX_RATES[rate];
   }
   
@@ -243,7 +245,12 @@ exports.handler = async (event, context) => {
         const sku = (productDetails[SKU_FIELD_KEY] || productDetails.code || '').trim();
         
         // VAT: Use deal product line item VAT if available, otherwise product VAT, default 23%
-        const vatRate = dp.tax || dp.vat || productDetails.tax || productDetails.vat || 23;
+        // Handle 0% VAT explicitly (can't use || because 0 is falsy)
+        const vatRate = dp.tax !== undefined && dp.tax !== null ? dp.tax 
+          : dp.vat !== undefined && dp.vat !== null ? dp.vat
+          : productDetails.tax !== undefined && productDetails.tax !== null ? productDetails.tax
+          : productDetails.vat !== undefined && productDetails.vat !== null ? productDetails.vat
+          : 23;
         
         // Price: item_price is the price per unit
         const itemPrice = parseFloat(dp.item_price || 0);
