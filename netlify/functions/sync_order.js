@@ -192,6 +192,10 @@ exports.handler = async (event, context) => {
     
     const dealId = data.deal_id;
     
+    // Fetch deal data from Pipedrive first (needed for deal-level discount calculation)
+    const dealResult = await pipedriveRequest(`deals/${dealId}`);
+    const dealData = dealResult.data || {};
+    
     // Fetch products from Pipedrive if not provided
     if (!data.products) {
       const productsResult = await pipedriveRequest(`deals/${dealId}/products`);
@@ -278,13 +282,11 @@ exports.handler = async (event, context) => {
       data.dealLevelDiscount = dealLevelDiscountPercent; // Store for reference
     }
     
-    // Get won_time if not provided
+    // Get won_time from deal data (already fetched above)
     if (!data.won_time) {
-      const dealResult = await pipedriveRequest(`deals/${dealId}`);
-      const deal = dealResult.data || {};
-      data.won_time = deal.won_time || '';
-      if (!data.deal_title) data.deal_title = deal.title || '';
-      if (!data.currency) data.currency = deal.currency || 'EUR';
+      data.won_time = dealData.won_time || '';
+      if (!data.deal_title) data.deal_title = dealData.title || '';
+      if (!data.currency) data.currency = dealData.currency || 'EUR';
     }
     
     if (!data.won_time) {
