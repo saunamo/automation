@@ -76,32 +76,34 @@ async function findVariantBySku(sku) {
   return variants.find(v => v.sku?.toUpperCase().trim() === sku.toUpperCase().trim()) || null;
 }
 
-async function findOrCreateProduct(productName, sku) {
-  const { data, error } = await katanaRequest('products?limit=1000');
-  if (!error && data) {
-    const products = data?.data || data?.results || [];
-    const existing = products.find(p => p.name?.trim().toUpperCase() === productName?.trim().toUpperCase());
-    if (existing) return existing;
-  }
-  
-  const productData = { name: productName, code: sku, unit: 'piece' };
-  const result = await katanaRequest('products', 'POST', productData);
-  if (result.error) return null;
-  return result.data?.data || result.data;
-}
-
 async function findOrCreateVariantBySku(sku, productName, price, vatRate) {
+  // First, try to find existing variant by SKU
   const variant = await findVariantBySku(sku);
   if (variant) return variant;
   
-  const product = await findOrCreateProduct(productName, sku);
-  if (!product) return null;
+  // Not found - create product WITH variant in one call (Katana requires this)
+  const productData = {
+    name: productName,
+    variants: [{
+      sku: sku,
+      sales_price: price,
+      purchase_price: price * 0.5 // Estimate purchase price at 50%
+    }]
+  };
   
-  const taxRateId = getTaxRateId(vatRate);
-  const variantData = { product_id: product.id, sku, price, tax_rate_id: taxRateId };
-  const result = await katanaRequest('variants', 'POST', variantData);
-  if (result.error) return null;
-  return result.data?.data || result.data;
+  const result = await katanaRequest('products', 'POST', productData);
+  if (result.error) {
+    console.log('Failed to create product:', result.error);
+    return null;
+  }
+  
+  // Return the created variant from the response
+  const createdProduct = result.data?.data || result.data;
+  if (createdProduct?.variants && createdProduct.variants.length > 0) {
+    return createdProduct.variants[0];
+  }
+  
+  return null;
 }
 
 function getTaxRateId(vatRate) {
