@@ -70,10 +70,30 @@ async function findOrCreateCustomer(name, email = null) {
 
 async function findVariantBySku(sku) {
   if (!sku) return null;
-  const { data, error } = await katanaRequest('variants?limit=1000');
-  if (error) return null;
-  const variants = data?.data || data?.results || [];
-  return variants.find(v => v.sku?.toUpperCase().trim() === sku.toUpperCase().trim()) || null;
+  
+  // Search with pagination to find SKU across all variants
+  const searchSku = sku.toUpperCase().trim();
+  let start = 0;
+  const limit = 1000;
+  
+  while (true) {
+    const { data, error } = await katanaRequest(`variants?start=${start}&limit=${limit}`);
+    if (error) return null;
+    
+    const variants = data?.data || data?.results || [];
+    if (!variants || variants.length === 0) break;
+    
+    // Search in current batch
+    const found = variants.find(v => v.sku?.toUpperCase().trim() === searchSku);
+    if (found) return found;
+    
+    // If we got fewer results than limit, we've reached the end
+    if (variants.length < limit) break;
+    
+    start += limit;
+  }
+  
+  return null;
 }
 
 async function findOrCreateVariantBySku(sku, productName, price, vatRate) {
