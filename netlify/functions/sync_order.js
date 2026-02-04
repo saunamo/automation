@@ -71,28 +71,28 @@ async function findOrCreateCustomer(name, email = null) {
 async function findVariantBySku(sku) {
   if (!sku) return null;
   
-  // Search with pagination to find SKU across all variants
-  const searchSku = sku.toUpperCase().trim();
-  let start = 0;
-  const limit = 1000;
+  // Use the SKU filter directly in the API call - this is the ONLY reliable way
+  // because Katana's variants endpoint only returns ~250 items without filters
+  const searchSku = sku.trim();
   
-  while (true) {
-    const { data, error } = await katanaRequest(`variants?start=${start}&limit=${limit}`);
-    if (error) return null;
-    
-    const variants = data?.data || data?.results || [];
-    if (!variants || variants.length === 0) break;
-    
-    // Search in current batch
-    const found = variants.find(v => v.sku?.toUpperCase().trim() === searchSku);
-    if (found) return found;
-    
-    // If we got fewer results than limit, we've reached the end
-    if (variants.length < limit) break;
-    
-    start += limit;
+  // Search by exact SKU using the API filter
+  const { data, error } = await katanaRequest(`variants?sku=${encodeURIComponent(searchSku)}`);
+  if (error) {
+    console.log(`Error searching for SKU ${searchSku}: ${error}`);
+    return null;
   }
   
+  const variants = data?.data || data?.results || [];
+  if (variants && variants.length > 0) {
+    // Find exact match (case-insensitive)
+    const found = variants.find(v => v.sku?.toUpperCase().trim() === searchSku.toUpperCase());
+    if (found) {
+      console.log(`Found variant by SKU filter: SKU=${searchSku}, ID=${found.id}`);
+      return found;
+    }
+  }
+  
+  console.log(`No variant found for SKU: ${searchSku}`);
   return null;
 }
 
