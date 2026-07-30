@@ -1,7 +1,12 @@
-exports.handler = async (event, context) => {
-  return {
-    statusCode: 200,
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ status: 'ok', message: 'Pipedrive-Katana sync is running' })
-  };
-};
+exports.handler = async () => ({
+  statusCode: 200,
+  headers: {
+    'Content-Type': 'application/json',
+    'Cache-Control': 'no-store',
+  },
+  body: JSON.stringify({
+    status: 'retired',
+    retired: true,
+    message: 'The legacy Pipedrive-to-Katana sync is retired.',
+  }),
+});
